@@ -11,6 +11,10 @@ from rest_framework import status
 from .serializers import FinancialDataSerializer
 from app.models import Price
 from datetime import date
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 # Get the current directory
 current_directory = os.path.dirname(__file__)
 
@@ -60,6 +64,39 @@ def get_data(request):
     # Return the data as JSON response
     print(data_list)
     return JsonResponse(data_list, safe=False)
+
+def scrapping(request):
+    element = ''
+    data = []
+    stock_symbol = 'BBCA'
+    url = f'https://finance.yahoo.com/quote/{stock_symbol}.JK/history?p={stock_symbol}.JK'
+    path = os.path.join(os.path.dirname(__file__), 'chromedriver.exe')
+    driver = webdriver.Chrome(executable_path=path)
+    driver.get(url)
+    try:
+        elements = WebDriverWait(driver, 10).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'tr.BdT'))
+        )
+        for element in elements:
+            row = element.find_elements(By.TAG_NAME, 'td')
+            date = row[0].text
+            open_price = row[1].text
+            high_price = row[2].text
+            low_price = row[3].text
+            close_price = row[4].text
+            volume = row[6].text
+            data.append([date, open_price, high_price, low_price, close_price, volume])
+
+        print(data)
+        df = pd.DataFrame(data, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
+        df['Open'] = df['Open'].str.replace(',', '').astype(float)
+        df['High'] = df['High'].str.replace(',', '').astype(float)
+        df['Low'] = df['Low'].str.replace(',', '').astype(float)
+        df['Close'] = df['Close'].str.replace(',', '').astype(float)
+        print(df)
+
+    finally:
+        return JsonResponse(json.dumps(data), safe=False)
 
 
 def api_view(request):
