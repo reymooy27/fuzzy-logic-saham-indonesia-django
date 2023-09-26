@@ -8,62 +8,86 @@ from skfuzzy import control as ctrl
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
-from .serializers import FinancialDataSerializer
-from app.models import Price
+from .serializers import FinancialDataSerializer, StockSerializer
+from app.models import Price, Stock
 from datetime import date
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from django.shortcuts import get_object_or_404
+from rest_framework.decorators import api_view
 # Get the current directory
 current_directory = os.path.dirname(__file__)
 
 # Define the file name
-file_name = 'BMRI.JK.csv'
+# file_name = 'BMRI.JK.csv'
 
 # Combine the directory and file name to create the file path
-file_path = os.path.join(current_directory, file_name)
+# file_path = os.path.join(current_directory, file_name)
 
-class UploadCSV(APIView):
+class CreateStock(APIView):
+    def post(self, request):
+        serializer = StockSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()  # Save the validated data as a new Stock instance
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def post(self, request, format=None):
-        csv_file_path = os.path.join(os.path.dirname(__file__), 'BMRI.JK.csv')
 
-        try:
-            data_frame = pd.read_csv(csv_file_path)
-        except Exception as e:
-            return Response({'error': 'Error reading CSV file'}, status=status.HTTP_400_BAD_REQUEST)
+@api_view(('POST','GET'))
+def upload_csv(request):
+    csv_file = request.FILES['csv_file']
+    name = request.POST.get('name', 'Untitled')
+    code = request.POST.get('code', 'Untitled')
+    sector = request.POST.get('sector', 'Untitled')
 
-        data_list = data_frame.to_dict('records')
-        codename = 'BMRI'
+    try:
+        data_frame = pd.read_csv(csv_file)
+    except Exception as e:
+        return Response({'error': 'Error reading CSV file'}, status=status.HTTP_400_BAD_REQUEST)
+
+    data_list = data_frame.to_dict('records')
+    stock_instance = Stock.objects.create(name=name, code=code, sector=sector)
+    
+    for data_entry in data_list:
+        mapped_data_entry = {
+            'stock': stock_instance.pk, 
+            'date': data_entry['Date'],
+            'open': data_entry['Open'],
+            'high': data_entry['High'],
+            'low': data_entry['Low'],
+            'close': data_entry['Close'],
+            'volume': data_entry['Volume'],
+        }
+        serializer = FinancialDataSerializer(data=mapped_data_entry)
         
-        for data_entry in data_list:
-            data_entry['code'] = codename
-            mapped_data_entry = {
-                'code': data_entry['code'],
-                'date': data_entry['Date'],
-                'open': data_entry['Open'],
-                'high': data_entry['High'],
-                'low': data_entry['Low'],
-                'close': data_entry['Close'],
-                'volume': data_entry['Volume'],
-            }
-            serializer = FinancialDataSerializer(data=mapped_data_entry)
-            
-            if serializer.is_valid():
-                serializer.save()
-            else:
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        return Response({'message': 'Data saved successfully'}, status=status.HTTP_201_CREATED)
-
-def get_data(request):
-    data_queryset = Price.objects.all()
+        if serializer.is_valid():
+            serializer.save()
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response({'message': 'Data saved successfully'}, status=status.HTTP_201_CREATED)
+    
+def get_all_data(request):
+    data_queryset = Stock.objects.all().order_by('code')
     # Convert QuerySet to a list of dictionaries
     data_list = list(data_queryset.values())
     # Return the data as JSON response
-    print(data_list)
     return JsonResponse(data_list, safe=False)
+
+def get_stock_data(request, code):
+    try:
+        stock = Stock.objects.get(code=code.upper())
+        data = {
+            'code': stock.code,
+            'name': stock.name,
+            'sector': stock.sector,
+            # Add other fields here
+        }
+        return JsonResponse(data)
+    except Stock.DoesNotExist:
+        return JsonResponse({'error': 'Saham tidak ditemukan'}, status=404)
 
 def scrapping(request):
     element = ''
@@ -103,8 +127,8 @@ def api_view(request):
   # Load data from a CSV file
     param = request.GET.get('kode')
     if param is not None:
-        
-        data_queryset = Price.objects.filter(code=param.upper())
+        stock_instance = get_object_or_404(Stock, code=param.upper())
+        data_queryset = Price.objects.filter(stock=stock_instance)
         if len(data_queryset) == 0:
             return JsonResponse('Tidak ada data saham ini', safe=False)
             # Convert QuerySet to a list of dictionaries
@@ -119,8 +143,7 @@ def api_view(request):
             'volume': 'Volume',
         }
         df = pd.DataFrame(data_list).rename(columns=column_mapping)
-        # df = pd.read_csv(file_path)
-        # print(data_list)
+        
         # Determine local price extrema using rolling windows
         df['RollingMin'] = df['Close'].rolling(window=20).min()
         df['RollingMax'] = df['Close'].rolling(window=20).max()

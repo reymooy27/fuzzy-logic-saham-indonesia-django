@@ -16,12 +16,15 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from app.views import api_view, get_data, scrapping
-from app.views import UploadCSV
+from app.views import api_view, get_stock_data, get_all_data, scrapping
+from app.views import upload_csv, CreateStock
+from django.urls import include, path
 
 urlpatterns = [
+    path("api/saham/all", get_all_data),
     path("admin", admin.site.urls),
-    path("api/saham", api_view, name='api-data'),
-    path('upload-csv/', UploadCSV.as_view(), name='upload-csv'),
-    path('scrapping/', scrapping, name='scrapping'),
+    path("api/saham", api_view),
+    path("api/saham/<str:code>", get_stock_data),
+    path('api/scrapping', scrapping),
+    path('api/create', upload_csv),
 ]
