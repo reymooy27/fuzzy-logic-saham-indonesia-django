@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "corsheaders",
+    'django_crontab',
     "app",
 ]
 
@@ -75,7 +76,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "stock_api.wsgi.application"
 
-
+CRONJOBS = [
+    ('*/5 * * * *', 'app.cron.cron_job')
+]
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 

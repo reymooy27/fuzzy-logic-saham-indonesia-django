@@ -16,8 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from app.views import api_view, get_stock_data, get_all_data, scrapping
-from app.views import upload_csv, CreateStock
+from app.views import api_view, get_stock_data, get_all_data, scraping
+from app.views import upload_csv
 from django.urls import include, path
 
 urlpatterns = [
@@ -25,6 +25,6 @@ urlpatterns = [
     path("admin", admin.site.urls),
     path("api/saham", api_view),
     path("api/saham/<str:code>", get_stock_data),
-    path('api/scrapping', scrapping),
+    path('api/scraping', scraping),
     path('api/create', upload_csv),
 ]
