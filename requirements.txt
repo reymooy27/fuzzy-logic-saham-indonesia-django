@@ -92,7 +92,6 @@ pytest-mock==3.10.0
 python-dateutil==2.8.2
 python-dotenv==1.0.0
 pytz==2023.3
-pywin32==306
 PyYAML==6.0
 readability-lxml==0.8.1
 redis==4.5.4
