@@ -41,7 +41,11 @@ INSTALLED_APPS = [
     "corsheaders",
     'django_crontab',
     "app",
+    "celery",
 ]
+
+# CELERY_TIMEZONE = 'Asia/Kolkata'
+CELERY_BROKER_URL = 'amqp://localhost'
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -77,7 +81,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "stock_api.wsgi.application"
 
 CRONJOBS = [
-    ('*/5 * * * *', 'app.cron.cron_job')
+    ('*/5 * * * *', 'app.cron.scraping')
 ]
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
@@ -130,3 +134,9 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+CELERY_BROKER_URL = 'redis://default:CtSSPyINciN5Qz6J5fMYVBRGiQ712y2D@redis-16392.c295.ap-southeast-1-1.ec2.cloud.redislabs.com:16392'
+CELERY_ACCEPT_CONTENT = ['application/json']
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Singapore'

@@ -1,12 +1,14 @@
 from app.models import Stock, Price
 import logging
 from django.db import transaction
+from celery import shared_task, Celery
 import os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime
+from stock_api.celery import app
 
 
 def scrape_stock_data(stock_symbol):
@@ -77,7 +79,8 @@ def scrape_stock_data(stock_symbol):
 
     return msg
 
-def scraping(request):
+@app.task
+def scraping():
     stock_codes_query = Stock.objects.values_list('code', flat=True)
     stock_codes_list = list(stock_codes_query)
 
@@ -85,5 +88,5 @@ def scraping(request):
     for stock_code in stock_codes_list:
         msg = scrape_stock_data(stock_code)
         messages.append({'stock_code': stock_code, 'msg': msg})
-        print(messages)
+
     return {'messages': messages}

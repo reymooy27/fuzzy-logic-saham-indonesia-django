@@ -1,4 +1,3 @@
-from datetime import datetime
 from django.http import JsonResponse
 import json
 import os
@@ -7,19 +6,18 @@ import numpy as np
 import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 from rest_framework.response import Response
-from rest_framework.views import APIView
 from rest_framework import status
-from .serializers import FinancialDataSerializer, StockSerializer
+from .serializers import FinancialDataSerializer
 from app.models import Price, Stock
-from datetime import date
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view
 import logging
 from django.db import transaction
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from datetime import datetime
 # Get the current directory
 current_directory = os.path.dirname(__file__)
 
@@ -83,9 +81,8 @@ def get_stock_data(request, code):
     except Stock.DoesNotExist:
         return JsonResponse({'error': 'Saham tidak ditemukan'}, status=404)
 
-def scraping(request):
+def scrape_stock_data(stock_symbol):
     msg = ''
-    stock_symbol = 'ADRO'
 
     try:
         # Retrieve the Stock instance based on the stock symbol
@@ -150,14 +147,25 @@ def scraping(request):
     finally:
         driver.quit()  # Close the browser session
 
-    return JsonResponse({'msg': msg}, status=200)
+    return msg
+
+def scraping(request):
+    stock_codes_query = Stock.objects.values_list('code', flat=True)
+    stock_codes_list = list(stock_codes_query)
+
+    messages = []  # Store messages for each stock code
+    for stock_code in stock_codes_list:
+        msg = scrape_stock_data(stock_code)
+        messages.append({'stock_code': stock_code, 'msg': msg})
+
+    return Response({'messages': messages})
 
 def api_view(request):
   # Load data from a CSV file
     param = request.GET.get('kode')
     if param is not None:
         stock_instance = get_object_or_404(Stock, code=param.upper())
-        data_queryset = Price.objects.filter(stock=stock_instance)
+        data_queryset = Price.objects.filter(stock=stock_instance).order_by('date')
         if len(data_queryset) == 0:
             return JsonResponse('Tidak ada data saham ini', safe=False)
             # Convert QuerySet to a list of dictionaries
