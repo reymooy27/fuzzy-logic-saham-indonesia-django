@@ -10,5 +10,10 @@
           "src": "/(.*)",
           "dest": "stock_api/wsgi.py"
       }
-  ]
+  ],
+  "functions": {
+    "api/**/*.py": {
+      "excludeFiles": "**/*.exe, "
+    }
+  }
 }
