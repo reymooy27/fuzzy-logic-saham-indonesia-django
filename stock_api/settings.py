@@ -44,9 +44,6 @@ INSTALLED_APPS = [
     "celery",
 ]
 
-# CELERY_TIMEZONE = 'Asia/Kolkata'
-CELERY_BROKER_URL = 'amqp://localhost'
-
 CORS_ALLOW_ALL_ORIGINS = True
 
 MIDDLEWARE = [
@@ -80,9 +77,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "stock_api.wsgi.application"
 
-CRONJOBS = [
-    ('*/5 * * * *', 'app.cron.scraping')
-]
+# CRONJOBS = [
+#     ('*/5 * * * *', 'app.cron.scraping')
+# ]
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
