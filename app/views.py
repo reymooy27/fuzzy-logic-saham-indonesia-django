@@ -97,7 +97,7 @@ def scrape_stock_data(stock_symbol):
         path = os.path.join(os.path.dirname(__file__), 'chromedriver.exe')
         options = webdriver.ChromeOptions()
         options.add_argument('--headless')  # Use headless browser
-        driver = webdriver.Chrome(executable_path=path, options=options)
+        driver = webdriver.Chrome(options=options)
         driver.get(url)
         
         # Scrape data
@@ -151,7 +151,7 @@ def scrape_stock_data(stock_symbol):
 
 def scraping(request):
     stock_codes_query = Stock.objects.values_list('code', flat=True)
-    stock_codes_list = list(stock_codes_query)
+    stock_codes_list = ['BBCA']
 
     messages = []  # Store messages for each stock code
     for stock_code in stock_codes_list:
