@@ -158,7 +158,7 @@ def scraping(request):
         msg = scrape_stock_data(stock_code)
         messages.append({'stock_code': stock_code, 'msg': msg})
 
-    return Response({'messages': messages})
+    return JsonResponse({'messages': messages})
 
 def api_view(request):
   # Load data from a CSV file

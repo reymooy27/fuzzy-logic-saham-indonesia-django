@@ -1,0 +1,14 @@
+
+{
+  "builds": [{
+      "src": "stock_api/wsgi.py",
+      "use": "@vercel/python",
+      "config": { "maxLambdaSize": "15mb" }
+  }],
+  "routes": [
+      {
+          "src": "/(.*)",
+          "dest": "stock_api/wsgi.py"
+      }
+  ]
+}
