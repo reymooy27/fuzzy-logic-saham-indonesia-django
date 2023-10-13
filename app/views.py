@@ -48,7 +48,7 @@ def upload_csv(request):
             'date': data_entry['Date'],
             'open': data_entry['Open'],
             'high': data_entry['High'],
-            'low': data_entry['Low'],
+            'sell': data_entry['Low'],
             'close': data_entry['Close'],
             'volume': data_entry['Volume'],
         }
@@ -182,19 +182,28 @@ def api_view(request):
         df = pd.DataFrame(data_list).rename(columns=column_mapping)
         
         # Determine local price extrema using rolling windows
-        df['RollingMin'] = df['Close'].rolling(window=20).min()
-        df['RollingMax'] = df['Close'].rolling(window=20).max()
+        df['RollingMin'] = df['Close'].rolling(window=50).min()
+        df['RollingMax'] = df['Close'].rolling(window=50).max()
 
         # Identify support levels
         df['SupportArea'] = ((abs(df['Close'] - df['RollingMin']) / df['RollingMin']) * 100) <= 3
-        # Print the support and resistance levels
+        df['ResistanceArea'] = ((abs(df['Close'] - df['RollingMax']) / df['RollingMax']) * 100) <= 3
 
-        # df['BodyLength'] = abs(df['Open'] - df['Close'])
-        # df['UpperShadow'] = df['High'] - df[['Open', 'Close']].max(axis=1)
-        # df['LowerShadow'] = df[['Open', 'Close']].min(axis=1) - df['Low']
+        #BullishHammer Pattern
+        df['BodyLength'] = abs(df['Open'] - df['Close'])
+        upperShadow = df['High'] - df[['Open', 'Close']].max(axis=1)
+        lowerShadow = df[['Open', 'Close']].min(axis=1) - df['Low']
+        df['BullishHammer'] = (df['Close'] > df['Open']) & (df['BodyLength'] < lowerShadow) & (lowerShadow > upperShadow * 2)
 
-        # # Determine if a bullish hammer pattern is present
-        # df['BullishHammer'] = (df['Close'] > df['Open']) & (df['BodyLength'] < df['LowerShadow']) & (df['LowerShadow'] > df['UpperShadow'] * 2)
+        # Doji Pattern
+        df['HighLowRange'] = df['High'] - df['Low']
+        df['Doji'] = df['BodyLength'] <= (0.02 * df['HighLowRange'])
+
+        
+        df['Lowest Low'] = df['Close'].rolling(window=14).min()
+        df['Highest High'] = df['Close'].rolling(window=14).max()
+        df['%K'] = ((df['Close'] - df['Lowest Low']) / (df['Highest High'] - df['Lowest Low'])) * 100
+        df['%D'] = df['%K'].rolling(window=3).mean()
 
         # Calculate RSI 
         delta = df['Close'].diff()
@@ -205,16 +214,22 @@ def api_view(request):
         rs = avg_gain / avg_loss
         df['RSI'] = 100 - (100 / (1 + rs))
 
+        # macd setting
+        # 8, 21, 5
+        # 3, 17, 5
+        # 3, 10, 16
+
         # Calculate the MACD line (12-day EMA minus 26-day EMA)
-        ema_12 = df['Close'].ewm(span=12, adjust=False).mean()
-        ema_26 = df['Close'].ewm(span=26, adjust=False).mean()
+        ema_12 = df['Close'].ewm(span=3, adjust=False).mean()
+        ema_26 = df['Close'].ewm(span=10, adjust=False).mean()
         macd_line = ema_12 - ema_26
         # Calculate the signal line (9-day EMA of the MACD line)
-        signal_line = macd_line.ewm(span=9, adjust=False).mean()
+        signal_line = macd_line.ewm(span=16, adjust=False).mean()
 
-        df['MACD_Crossover'] = (macd_line > signal_line) & (macd_line.shift(1) < signal_line.shift(1))
+        df['MACD_GoldenCross'] = (macd_line > signal_line) & (macd_line.shift(1) < signal_line.shift(1))
+        df['MACD_DeathCross'] = (macd_line < signal_line) & (macd_line.shift(1) > signal_line.shift(1))
 
-        # df['Above_EMA_200'] = df['Close'] > df['Close'].rolling(window=200).mean()
+        df['Above_EMA_200'] = df['Close'] > df['Close'].rolling(window=200).mean()
 
         df['Engulfing'] = (df['Close'] > df['Open']) & (df['Close'].shift(1) < df['Open'].shift(1)) & \
                                 (df['High'] > df['High'].shift(1)) & (df['Low'] < df['Low'].shift(1))
@@ -222,89 +237,178 @@ def api_view(request):
         # # Add a column for the downtrend or consolidation condition
         # df['Downtrend_Consolidation'] = (df['Close'] < df['Close'].rolling(window=50).mean())
 
-        # # Filter the DataFrame to get only the bullish engulfing patterns
-        # bullish_engulfing_patterns = df[df['Engulfing'] & df['Downtrend_Consolidation']]
-
         # Define the input variables
         engulfing = ctrl.Antecedent(np.arange(0, 2, 1), 'engulfing')
-        macd_crossover = ctrl.Antecedent(np.arange(0, 2, 1), 'macd_crossover')
+        bullish_hammer = ctrl.Antecedent(np.arange(0, 2, 1), 'bullish_hammer')
+        doji = ctrl.Antecedent(np.arange(0, 2, 1), 'doji')
+        macd_goldencross = ctrl.Antecedent(np.arange(0, 2, 1), 'macd_goldencross')
+        macd_deathcross = ctrl.Antecedent(np.arange(0, 2, 1), 'macd_deathcross')
         rsi = ctrl.Antecedent(np.arange(0, 101, 1), 'rsi')
+        stochastic = ctrl.Antecedent(np.arange(0, 101, 1), 'stochastic')
         support_area = ctrl.Antecedent(np.arange(0, 2, 1), 'support_area')
-
-        # above_ema_200 = ctrl.Antecedent(np.arange(0, 2, 1), 'above_ema_200')
+        resistance_area = ctrl.Antecedent(np.arange(0, 2, 1), 'resistance_area')
+        above_ema_200 = ctrl.Antecedent(np.arange(0, 2, 1), 'above_ema_200')
 
         # Define the output variable
+        exit_position = ctrl.Consequent(np.arange(0, 101, 1), 'exit_position')
         entry_position = ctrl.Consequent(np.arange(0, 101, 1), 'entry_position')
 
         # membership function
         engulfing['no'] = fuzz.trimf(engulfing.universe, [0, 0, 0])
         engulfing['yes'] = fuzz.trimf(engulfing.universe, [1, 1, 1])
 
-        macd_crossover['no'] = fuzz.trimf(macd_crossover.universe, [0, 0, 0])
-        macd_crossover['yes'] = fuzz.trimf(macd_crossover.universe, [1, 1, 1])
+        bullish_hammer['no'] = fuzz.trimf(bullish_hammer.universe, [0, 0, 0])
+        bullish_hammer['yes'] = fuzz.trimf(bullish_hammer.universe, [1, 1, 1])
+
+        doji['no'] = fuzz.trimf(doji.universe, [0, 0, 0])
+        doji['yes'] = fuzz.trimf(doji.universe, [1, 1, 1])
+
+        macd_goldencross['no'] = fuzz.trimf(macd_goldencross.universe, [0, 0, 0])
+        macd_goldencross['yes'] = fuzz.trimf(macd_goldencross.universe, [1, 1, 1])
+
+        macd_deathcross['no'] = fuzz.trimf(macd_deathcross.universe, [0, 0, 0])
+        macd_deathcross['yes'] = fuzz.trimf(macd_deathcross.universe, [1, 1, 1])
 
         rsi['oversold'] = fuzz.trimf(rsi.universe, [0, 20, 45])
         rsi['neutral'] = fuzz.trimf(rsi.universe, [30, 50, 70])
         rsi['overbought'] = fuzz.trimf(rsi.universe, [60, 80, 100])
 
+        stochastic['oversold'] = fuzz.trimf(stochastic.universe, [0, 20, 40])
+        stochastic['neutral'] = fuzz.trimf(stochastic.universe, [30, 50, 70])
+        stochastic['overbought'] = fuzz.trimf(stochastic.universe, [60, 80, 100])
+
         support_area['no'] = fuzz.trimf(support_area.universe, [0,0,0])
         support_area['yes'] = fuzz.trimf(support_area.universe, [1,1,1])
 
-        # above_ema_200['no'] = fuzz.trimf(above_ema_200.universe, [0, 0, 0])
-        # above_ema_200['yes'] = fuzz.trimf(above_ema_200.universe, [1, 1, 1])
+        resistance_area['no'] = fuzz.trimf(resistance_area.universe, [0,0,0])
+        resistance_area['yes'] = fuzz.trimf(resistance_area.universe, [1,1,1])
 
+        above_ema_200['no'] = fuzz.trimf(above_ema_200.universe, [0, 0, 0])
+        above_ema_200['yes'] = fuzz.trimf(above_ema_200.universe, [1, 1, 1])
 
-        # Define the membership functions for the entry position output variable
+        exit_position['low'] = fuzz.trimf(exit_position.universe, [0, 0, 50])
+        exit_position['high'] = fuzz.trimf(exit_position.universe, [50, 50, 100])
+
         entry_position['low'] = fuzz.trimf(entry_position.universe, [0, 0, 50])
-        entry_position['high'] = fuzz.trimf(entry_position.universe, [50, 100, 100])
+        entry_position['high'] = fuzz.trimf(entry_position.universe, [50, 50, 100])
 
         # Define the rules for the fuzzy system
-        rule1 = ctrl.Rule(rsi['oversold'] & macd_crossover['yes'], entry_position['high'])
-        rule2 = ctrl.Rule(rsi['oversold'] & macd_crossover['no'], entry_position['high'])
-        rule3 = ctrl.Rule(rsi['neutral'] & macd_crossover['yes'], entry_position['high'])
-        rule4 = ctrl.Rule(rsi['neutral'] & macd_crossover['no'], entry_position['low'])
-        # rule5 = ctrl.Rule(rsi['overbought'] & macd_crossover['yes'], entry_position['low'])
-        rule6 = ctrl.Rule(rsi['overbought'] & macd_crossover['no'] , entry_position['low'])
-        rule7 = ctrl.Rule(support_area['yes'], entry_position['high'])
-        rule8 = ctrl.Rule(support_area['no'], entry_position['low'])
-        rule9 = ctrl.Rule(support_area['yes'] & engulfing['yes'], entry_position['high'])
-        rule10 = ctrl.Rule(support_area['no'] & engulfing['no'], entry_position['low'])
+        entry_rule1 = ctrl.Rule(rsi['oversold'] & support_area['yes'], entry_position['high'])
+        entry_rule2 = ctrl.Rule(rsi['oversold'] & support_area['no'], entry_position['low'])
+        entry_rule3 = ctrl.Rule(rsi['neutral'] & support_area['yes'], entry_position['low'])
+        entry_rule4 = ctrl.Rule(rsi['neutral'] & support_area['no'], entry_position['low'])
+        entry_rule5 = ctrl.Rule(rsi['overbought'] & support_area['yes'], entry_position['low'])
+        entry_rule6 = ctrl.Rule(rsi['overbought'] & support_area['no'], entry_position['low'])
+        # entry_rule7 = ctrl.Rule(macd_goldencross['yes'] & above_ema_200['yes'], entry_position['high'])
+        # entry_rule8 = ctrl.Rule(macd_goldencross['no'] & above_ema_200['yes'], entry_position['low'])
+        entry_rule9 = ctrl.Rule(support_area['yes'] & engulfing['yes'], entry_position['high'])
+        # entry_rule10 = ctrl.Rule(support_area['no'] & engulfing['no'], entry_position['low'])
+        entry_rule11 = ctrl.Rule(support_area['yes'] & bullish_hammer['yes'], entry_position['high'])
+        # entry_rule12 = ctrl.Rule(support_area['no'] & bullish_hammer['no'], entry_position['low'])
+        entry_rule13 = ctrl.Rule(macd_goldencross['yes'] & support_area['yes'], entry_position['high'])
+        entry_rule14 = ctrl.Rule(macd_goldencross['no'] & support_area['no'], entry_position['low'])
+        entry_rule15 = ctrl.Rule(doji['yes'] & support_area['yes'], entry_position['high'])
+        # entry_rule16 = ctrl.Rule(doji['no'] & support_area['no'], entry_position['low'])
+        # entry_rule17 = ctrl.Rule(support_area['yes'], entry_position['high'])
+        # entry_rule18 = ctrl.Rule(support_area['no'], entry_position['low'])
+        entry_rule19 = ctrl.Rule(stochastic['oversold'] & support_area['yes'], entry_position['high'])
+        entry_rule20 = ctrl.Rule(stochastic['neutral'], entry_position['low'])
+        entry_rule21 = ctrl.Rule(stochastic['overbought'], entry_position['low'])
+        # entry_rule22 = ctrl.Rule(above_ema_200['yes'], entry_position['high'])
 
-        # Create the control system and simulate it for each row of the data
+        exit_rule1 = ctrl.Rule(rsi['overbought'] & resistance_area['yes'], exit_position['high'])
+        exit_rule2 = ctrl.Rule(rsi['overbought'] & resistance_area['no'], exit_position['low'])
+        exit_rule3 = ctrl.Rule(rsi['neutral'] & resistance_area['yes'], exit_position['low'])
+        exit_rule4 = ctrl.Rule(rsi['neutral'] & resistance_area['no'], exit_position['low'])
+        exit_rule5 = ctrl.Rule(rsi['oversold'] & resistance_area['yes'], exit_position['low'])
+        exit_rule6 = ctrl.Rule(rsi['oversold'] & resistance_area['no'], exit_position['low'])
+        # exit_rule7 = ctrl.Rule(macd_deathcross['yes'] & above_ema_200['yes'], exit_position['high'])
+        # exit_rule8 = ctrl.Rule(macd_deathcross['no'] & above_ema_200['yes'], exit_position['low'])
+        exit_rule9 = ctrl.Rule(macd_deathcross['yes'] & resistance_area['yes'], exit_position['high'])
+        exit_rule10 = ctrl.Rule(macd_deathcross['no'] & resistance_area['no'], exit_position['low'])
+        exit_rule11 = ctrl.Rule(doji['yes'] & resistance_area['yes'], exit_position['high'])
+        exit_rule12 = ctrl.Rule(doji['no'] & resistance_area['no'], exit_position['low'])
+        exit_rule13 = ctrl.Rule(stochastic['oversold'], exit_position['low'])
+        exit_rule14 = ctrl.Rule(stochastic['neutral'], exit_position['low'])
+        exit_rule15 = ctrl.Rule(stochastic['overbought'] & resistance_area['yes'], exit_position['high'])
+        # exit_rule16 = ctrl.Rule(above_ema_200['no'], exit_position['high'])
+
         entry_position_ctrl = ctrl.ControlSystem(
             [
-            rule1, 
-            rule2, 
-            rule3, 
-            rule4, 
-            #  rule5, 
-            rule6,
-            rule7,
-            rule8,
-            rule9,
-            rule10,
-            #  rule11,
-            # #  rule12,
-            #  rule13,
+            entry_rule1, 
+            entry_rule2, 
+            entry_rule3, 
+            entry_rule4, 
+            entry_rule5, 
+            entry_rule6, 
+            # entry_rule7,
+            # entry_rule8,
+            entry_rule9,
+            # entry_rule10,
+            entry_rule11,
+            # entry_rule12,
+            entry_rule13,
+            entry_rule14,
+            entry_rule15,
+            # entry_rule16,
+            # entry_rule17,
+            # entry_rule18,
+            entry_rule19,
+            entry_rule20,
+            entry_rule21,
+            # entry_rule22,
             ]
             )
         entry_position_simulation = ctrl.ControlSystemSimulation(entry_position_ctrl)
 
-        # Loop through the data and predict the entry position for each row
+        exit_position_ctrl = ctrl.ControlSystem(
+            [
+            exit_rule1, 
+            exit_rule2, 
+            exit_rule3, 
+            exit_rule4, 
+            exit_rule5, 
+            exit_rule6, 
+            # exit_rule7, 
+            # exit_rule8, 
+            exit_rule9,
+            exit_rule10,
+            exit_rule11,
+            exit_rule12,
+            exit_rule13,
+            exit_rule14,
+            exit_rule15,
+            # exit_rule16,
+
+            ]
+            )
+        exit_position_simulation = ctrl.ControlSystemSimulation(exit_position_ctrl)
+
+        # Loop through the data and predict the entry entry_position for each row
         for i in range(len(df)):
             # Set the input values for the current row
             entry_position_simulation.input['rsi'] = df.loc[i, 'RSI']
-            entry_position_simulation.input['macd_crossover'] = df.loc[i, 'MACD_Crossover']
+            entry_position_simulation.input['stochastic'] = df.loc[i, '%D']
+            entry_position_simulation.input['macd_goldencross'] = df.loc[i, 'MACD_GoldenCross']
             entry_position_simulation.input['support_area'] = df.loc[i, 'SupportArea']
             entry_position_simulation.input['engulfing'] = df.loc[i, 'Engulfing']
-            # entry_position_simulation.input['engulfing'] = df.loc[i, 'Engulfing']
+            entry_position_simulation.input['bullish_hammer'] = df.loc[i, 'BullishHammer']
+            entry_position_simulation.input['doji'] = df.loc[i, 'Doji']
             # entry_position_simulation.input['above_ema_200'] = df.loc[i, 'Above_EMA_200']
             
-            # Compute the output value
             entry_position_simulation.compute()
+
+            exit_position_simulation.input['rsi'] = df.loc[i, 'RSI']
+            exit_position_simulation.input['stochastic'] = df.loc[i, '%D']
+            exit_position_simulation.input['macd_deathcross'] = df.loc[i, 'MACD_DeathCross']
+            exit_position_simulation.input['resistance_area'] = df.loc[i, 'ResistanceArea']
+            exit_position_simulation.input['doji'] = df.loc[i, 'Doji']
+            # exit_position_simulation.input['above_ema_200'] = df.loc[i, 'Above_EMA_200']
+
+            exit_position_simulation.compute()
             
-            # Save the predicted entry position for the current row
             df.loc[i, 'Entry_Position'] = entry_position_simulation.output['entry_position']
+            df.loc[i, 'Exit_Position'] = exit_position_simulation.output['exit_position']
         
         df['Date'] = pd.to_datetime(df['Date']).dt.date
         df['Date'] = df['Date'].apply(lambda x: x.strftime('%Y-%m-%d'))
