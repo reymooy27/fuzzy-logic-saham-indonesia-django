@@ -71,15 +71,10 @@ def get_all_data(request):
 def get_stock_data(request, code):
     try:
         stock = Stock.objects.get(code=code.upper())
-        data = {
-            'code': stock.code,
-            'name': stock.name,
-            'sector': stock.sector,
-            # Add other fields here
-        }
-        return JsonResponse(data)
+        data = Price.objects.filter(stock=stock).order_by('date')
+        return JsonResponse(list(data.values()), safe=False)
     except Stock.DoesNotExist:
-        return JsonResponse({'error': 'Saham tidak ditemukan'}, status=404)
+        return JsonResponse({'error': 'Saham tidak ditemukan'}, status=404, safe=False)
 
 def scrape_stock_data(stock_symbol):
     msg = ''
@@ -94,10 +89,11 @@ def scrape_stock_data(stock_symbol):
         
         # Define the URL and set up the webdriver
         url = f'https://finance.yahoo.com/quote/{stock_symbol}.JK/history?p={stock_symbol}.JK'
-        path = os.path.join(os.path.dirname(__file__), 'chromedriver.exe')
-        options = webdriver.ChromeOptions()
-        options.add_argument('--headless')  # Use headless browser
-        driver = webdriver.Chrome(executable_path=path, options=options)
+        # path = os.path.join(os.path.dirname(__file__), 'chromedriver.exe')
+        options = webdriver.EdgeOptions()
+        # options.headless = True
+        options.add_argument('headless')  # Use headless browser
+        driver = webdriver.Edge(options=options)
         driver.get(url)
         
         # Scrape data
@@ -149,6 +145,7 @@ def scrape_stock_data(stock_symbol):
 
     return msg
 
+
 def scraping(request):
     stock_codes_query = Stock.objects.values_list('code', flat=True)
     stock_codes_list = list(stock_codes_query)
@@ -159,6 +156,16 @@ def scraping(request):
         messages.append({'stock_code': stock_code, 'msg': msg})
 
     return JsonResponse({'messages': messages})
+
+def scraping_single_stock(request, code):
+    msg = ''
+    try:
+        msg = scrape_stock_data(code.upper())
+    except Exception as e:
+        msg = str(e)
+        logging.error(msg)
+
+    return JsonResponse({'messages': msg})
 
 def api_view(request):
   # Load data from a CSV file
@@ -199,20 +206,20 @@ def api_view(request):
         df['HighLowRange'] = df['High'] - df['Low']
         df['Doji'] = df['BodyLength'] <= (0.02 * df['HighLowRange'])
 
-        
+        # Stochastic
         df['Lowest Low'] = df['Close'].rolling(window=14).min()
         df['Highest High'] = df['Close'].rolling(window=14).max()
         df['%K'] = ((df['Close'] - df['Lowest Low']) / (df['Highest High'] - df['Lowest Low'])) * 100
         df['%D'] = df['%K'].rolling(window=3).mean()
 
         # Calculate RSI 
-        delta = df['Close'].diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-        avg_gain = gain.rolling(window=14).mean()
-        avg_loss = loss.rolling(window=14).mean().abs()
-        rs = avg_gain / avg_loss
-        df['RSI'] = 100 - (100 / (1 + rs))
+        df['delta'] = df['Close'].diff()
+        df['gain'] = df['delta'].where(df['delta'] > 0, 0)
+        df['loss'] = -df['delta'].where(df['delta'] < 0, 0)
+        df['avg_gain'] = df['gain'].rolling(window=14).mean()
+        df['avg_loss'] = df['loss'].rolling(window=14).mean().abs()
+        df['rs'] = df['avg_gain'] / df['avg_loss']
+        df['RSI'] = 100 - (100 / (1 + df['rs']))
 
         # macd setting
         # 8, 21, 5
@@ -220,14 +227,14 @@ def api_view(request):
         # 3, 10, 16
 
         # Calculate the MACD line (12-day EMA minus 26-day EMA)
-        ema_12 = df['Close'].ewm(span=3, adjust=False).mean()
-        ema_26 = df['Close'].ewm(span=10, adjust=False).mean()
-        macd_line = ema_12 - ema_26
+        df['ema_12'] = df['Close'].ewm(span=12, adjust=False).mean()
+        df['ema_26'] = df['Close'].ewm(span=26, adjust=False).mean()
+        df['macd_line'] = df['ema_12'] - df['ema_26']
         # Calculate the signal line (9-day EMA of the MACD line)
-        signal_line = macd_line.ewm(span=16, adjust=False).mean()
+        df['signal_line'] = df['macd_line'].ewm(span=9, adjust=False).mean()
 
-        df['MACD_GoldenCross'] = (macd_line > signal_line) & (macd_line.shift(1) < signal_line.shift(1))
-        df['MACD_DeathCross'] = (macd_line < signal_line) & (macd_line.shift(1) > signal_line.shift(1))
+        df['MACD_GoldenCross'] = (df['macd_line'] > df['signal_line']) & (df['macd_line'].shift(1) < df['signal_line'].shift(1))
+        df['MACD_DeathCross'] = (df['macd_line'] < df['signal_line']) & (df['macd_line'].shift(1) > df['signal_line'].shift(1))
 
         df['Above_EMA_200'] = df['Close'] > df['Close'].rolling(window=200).mean()
 
@@ -286,11 +293,11 @@ def api_view(request):
         above_ema_200['no'] = fuzz.trimf(above_ema_200.universe, [0, 0, 0])
         above_ema_200['yes'] = fuzz.trimf(above_ema_200.universe, [1, 1, 1])
 
-        exit_position['low'] = fuzz.trimf(exit_position.universe, [0, 0, 50])
-        exit_position['high'] = fuzz.trimf(exit_position.universe, [50, 50, 100])
+        exit_position['low'] = fuzz.trimf(exit_position.universe, [0, 25, 50])
+        exit_position['high'] = fuzz.trimf(exit_position.universe, [50, 75, 100])
 
-        entry_position['low'] = fuzz.trimf(entry_position.universe, [0, 0, 50])
-        entry_position['high'] = fuzz.trimf(entry_position.universe, [50, 50, 100])
+        entry_position['low'] = fuzz.trimf(entry_position.universe, [0, 25, 50])
+        entry_position['high'] = fuzz.trimf(entry_position.universe, [50, 75, 100])
 
         # Define the rules for the fuzzy system
         entry_rule1 = ctrl.Rule(rsi['oversold'] & support_area['yes'], entry_position['high'])
@@ -330,7 +337,7 @@ def api_view(request):
         exit_rule12 = ctrl.Rule(doji['no'] & resistance_area['no'], exit_position['low'])
         exit_rule13 = ctrl.Rule(stochastic['oversold'], exit_position['low'])
         exit_rule14 = ctrl.Rule(stochastic['neutral'], exit_position['low'])
-        exit_rule15 = ctrl.Rule(stochastic['overbought'] & resistance_area['yes'], exit_position['high'])
+        exit_rule15 = ctrl.Rule(stochastic['overbought'] & rsi['overbought'] & resistance_area['yes'], exit_position['high'])
         # exit_rule16 = ctrl.Rule(above_ema_200['no'], exit_position['high'])
 
         entry_position_ctrl = ctrl.ControlSystem(
