@@ -16,7 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from app.views import api_view, get_stock_data, scraping_single_stock, get_all_data, scraping,  upload_csv
+from app.views import api_view, get_stock_data, scraping_single_stock, get_all_data, scraping,  upload_csv, clear_data
 from django.urls import path
 
 urlpatterns = [
@@ -27,4 +27,5 @@ urlpatterns = [
     path('api/scraping', scraping),
     path('api/scraping/<str:code>', scraping_single_stock),
     path('api/create', upload_csv),
+    path('api/clear', clear_data),
 ]
