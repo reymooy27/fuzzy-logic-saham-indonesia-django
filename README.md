@@ -13,6 +13,11 @@ Its using technical analysis as input in fuzzy logic
 
 Combining those indicator in Fuzzy Logic to make decision
 
+## Frontend
+
+For the [frontend](https://choosealicense.com/licenses/mit/](https://github.com/reymooy27/fuzzy-logic-saham-indonesia)https://github.com/reymooy27/fuzzy-logic-saham-indonesia) code
+
+
 
 
 
