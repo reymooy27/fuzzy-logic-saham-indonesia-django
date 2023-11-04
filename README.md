@@ -25,7 +25,7 @@ Combining those indicator in Fuzzy Logic to make decision
 
 ## Frontend
 
-For the [frontend](https://choosealicense.com/licenses/mit/](https://github.com/reymooy27/fuzzy-logic-saham-indonesia)https://github.com/reymooy27/fuzzy-logic-saham-indonesia) code
+For the [frontend](https://github.com/reymooy27/fuzzy-logic-saham-indonesia) code
 
 ![alt text](./Screenshot/Screenshot%201.png)
 
