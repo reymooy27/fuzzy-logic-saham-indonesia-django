@@ -13,6 +13,16 @@ Its using technical analysis as input in fuzzy logic
 
 Combining those indicator in Fuzzy Logic to make decision
 
+## API
+
+| API | Function |
+|----------|----------|
+| api/saham/all | Get all stock data |
+| api/saham/<stock_code> | Get all stock prices |
+| api/saham?kode=<stock_code> | Get the fuzzy logic analysis |
+| api/scraping | Scrape all stock data |
+| api/scraping/<stock_code> | Scrape single stock data |
+
 ## Frontend
 
 For the [frontend](https://choosealicense.com/licenses/mit/](https://github.com/reymooy27/fuzzy-logic-saham-indonesia)https://github.com/reymooy27/fuzzy-logic-saham-indonesia) code
